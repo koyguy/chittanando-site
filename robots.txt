@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://koyguy.github.io/chittanando-site/sitemap.xml
