@@ -7,6 +7,9 @@
   const BIZ_TZ = CFG.timezone || 'Asia/Kolkata';
   const BIZ_LABEL = CFG.tzLabel || 'IST';
   const $ = (s, r = document) => r.querySelector(s);
+  // Intl formatters are expensive to construct; cache them.
+  const dtfCache = new Map();
+  const DTF = (loc, o) => { const k = (loc || '') + JSON.stringify(o); let f = dtfCache.get(k); if (!f) { f = new Intl.DateTimeFormat(loc, o); dtfCache.set(k, f); } return f; };
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   let userTz = 'UTC';
   try { userTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (_) {}
@@ -35,7 +38,7 @@
   const AV = CFG.availability || null;
   const DOW = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
   const offsetMin = (tz, d) => {
-    const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).formatToParts(d).map((x) => [x.type, x.value]));
+    const p = Object.fromEntries(DTF('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).formatToParts(d).map((x) => [x.type, x.value]));
     return Math.round((Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - d.getTime()) / 60000);
   };
   const zonedToUtc = (day, min) => {
@@ -44,7 +47,7 @@
     let t = guess - offsetMin(BIZ_TZ, new Date(guess)) * 60000;
     const o2 = offsetMin(BIZ_TZ, new Date(t)); t = guess - o2 * 60000; return new Date(t);
   };
-  const bizDay = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: BIZ_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+  const bizDay = (d) => DTF('en-CA', { timeZone: BIZ_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
   const addDays = (day, n) => { const [y, m, d] = day.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
   function localSlots(serviceId, from) {
     const svc = (CFG.services || []).find((x) => x.id === serviceId) || { duration: 60 };
@@ -79,8 +82,8 @@
   const state = { service: null, from: null, prevFrom: null, nextFrom: null, groups: [], dayIdx: -1, start: null };
   const sameTz = userTz === BIZ_TZ || (inIndia && /Kolkata|Calcutta/.test(BIZ_TZ));
 
-  const fmt = (d, tz, o) => new Intl.DateTimeFormat(undefined, { timeZone: tz, ...o }).format(d);
-  const localKey = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: userTz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+  const fmt = (d, tz, o) => DTF(undefined, { timeZone: tz, ...o }).format(d);
+  const localKey = (d) => DTF('en-CA', { timeZone: userTz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
   const tzName = (() => { try { return fmt(new Date(), userTz, { timeZoneName: 'short' }).split(' ').pop(); } catch (_) { return userTz; } })();
   const hint = $('#tz-hint');
   if (hint) hint.textContent = sameTz ? `Times are shown in India Standard Time (${BIZ_LABEL}).` : `Times are shown in your time zone (${userTz.replace(/_/g, ' ')}, ${tzName}), with India Standard Time (${BIZ_LABEL}) alongside.`;
@@ -98,7 +101,7 @@
     const svc = $('input[name=service]:checked', form);
     const svcName = svc ? svc.closest('label').querySelector('.choice-title').textContent : '';
     const when = state.start ? `${fmt(new Date(state.start), userTz, { dateStyle: 'full', timeStyle: 'short' })} (${userTz}) = ${fmt(new Date(state.start), BIZ_TZ, { dateStyle: 'medium', timeStyle: 'short' })} ${BIZ_LABEL}` : '';
-    const body = `Hello Chittanando,\n\nI would like to book a session.\n\nSession: ${svcName}\nPreferred time: ${when}\nName: ${g('name')}\nPhone/WhatsApp: ${g('phone')}\nCountry: ${g('country')}\nWhat I would like guidance on: ${g('intention')}\n\nThank you.`;
+    const body = `Hello Chittanando,\n\nI would like to book a session.\n\nSession: ${svcName}\nPreferred time: ${when}\nName: ${g('name')}\nPhone/WhatsApp: ${g('phone')}\nCountry: ${g('country')}${state.service === 'enquiry' ? `\nInterested in: ${g('interest')}` : ''}\nWhat I would like to work on: ${g('intention')}\n\nThank you.`;
     return `mailto:${EMAIL}?subject=${encodeURIComponent('Session booking request — ' + (svcName || 'Chittanando'))}&body=${encodeURIComponent(body)}`;
   }
   function showFallback(reason) {
@@ -303,6 +306,7 @@
   // boot: health check, then load slots; fall back to email if the API is down
   (async () => {
     try {
+      if (!API && !CFG.sameOriginApi) throw new Error('no api configured'); // e.g. GitHub Pages without a live API
       const r = await api('/api/health');
       if (!r.ok || !API && location.hostname.endsWith('github.io')) throw new Error('down');
       form.hidden = false; setStatus('', ''); status.hidden = true; root.dataset.state = 'ready';

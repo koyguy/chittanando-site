@@ -7,16 +7,16 @@ window.CHITTANANDO_CONFIG = {
   "tzLabel": "IST",
   "services": [
     {
-      "id": "soul-speak",
-      "duration": 45
+      "id": "enquiry",
+      "duration": 20
     },
     {
       "id": "mind-mastery",
       "duration": 60
     },
     {
-      "id": "enquiry",
-      "duration": 20
+      "id": "soul-speak",
+      "duration": 45
     }
   ],
   "availability": {
